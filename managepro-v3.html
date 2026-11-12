@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ManagePro Congo</title>
+<style>
+:root{--bg:#f5f7fa;--card:#fff;--tx:#1a2233;--mut:#6b7587;--pri:#1f4e8c;--bd:#dde3ec;box-sizing:border-box}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12161d;--card:#1c222c;--tx:#e8ecf2;--mut:#98a3b5;--pri:#3d74bd;--bd:#2c3441}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--pri);color:#fff}
+header h1{font-size:18px;margin:0}
+header label{flex-direction:row;align-items:center;gap:6px;color:#fff;width:auto}
+header select{width:auto}
+nav{display:flex;gap:6px;overflow-x:auto;padding:10px 12px;background:var(--card);border-bottom:1px solid var(--bd)}
+nav button{white-space:nowrap;border:1px solid var(--bd);background:var(--bg);color:var(--tx);padding:8px 12px;border-radius:8px;cursor:pointer}
+nav button.on{background:var(--pri);color:#fff;border-color:var(--pri)}
+main{max-width:1000px;margin:0 auto;padding:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:10px}
+.kpi b{display:block;font-size:20px}.kpi span{color:var(--mut);font-size:13px}
+h2{font-size:16px;margin:2px 0 10px}
+.frm{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;align-items:end}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mut);gap:3px}
+input,select{padding:8px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--tx);font:inherit;width:100%}
+input[type=range]{padding:0}
+.btn{background:var(--pri);color:#fff;border:0;padding:9px 14px;border-radius:8px;cursor:pointer;font:inherit}
+.btn.s{background:transparent;color:#d93636;padding:4px 8px;border:1px solid var(--bd)}
+.btn.g{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--bd)}
+.row.f{border:0}
+.pill{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;margin:2px 2px 2px 0}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;background:var(--bd)}
+.alert{padding:10px;border-radius:8px;margin-bottom:8px;border:1px solid #f08a1c;color:#f08a1c}
+.alert.bad{border-color:#d93636;color:#d93636}
+.bar{height:12px;background:var(--bd);border-radius:6px;overflow:hidden;margin:4px 0}
+.bar i{display:block;height:100%;border-radius:6px}
+small,.mut{color:var(--mut)}
+.sc{overflow-x:auto}
+#rep{display:none}
+@media print{body.printing>*:not(#rep){display:none}body.printing #rep{display:block;color:#000;background:#fff;padding:16px}}
+</style></head><body>
+<header><h1>ManagePro Congo</h1><label>Rôle <select id="role" onchange="S.role=this.value;S.tab='dash';S.detail='';go()"></select></label></header>
+<nav id="nav"></nav><main id="app"></main><div id="rep"></div>
+<script>
+const KEY='managepro_v2';
+const ROLES=['Admin','Chef de projet','Employé','Comptable'];
+const ACC={Admin:['dash','proj','task','budget','stock','team'],'Chef de projet':['dash','proj','task','budget','stock'],'Employé':['dash','task','stock'],Comptable:['dash','budget']};
+const TABS={dash:'Tableau de bord',proj:'Projets',task:'Tâches',budget:'Budget',stock:'Stock',team:'Équipe'};
+const LV=[{m:25,c:'#d93636',x:'#fff',n:'Rouge',d:'Démarrage (0–25 %)'},{m:50,c:'#f08a1c',x:'#fff',n:'Orange',d:'En cours (26–50 %)'},{m:75,c:'#f2c500',x:'#1a2233',n:'Jaune',d:'Bien avancé (51–75 %)'},{m:100,c:'#1e9e5a',x:'#fff',n:'Vert',d:'Presque fini / terminé (76–100 %)'}];
+const EMPTY={role:'Admin',tab:'dash',pid:'',detail:'',projects:[],tasks:[],expenses:[],incomes:[],products:[],moves:[],team:[]};
+let S;try{S=Object.assign({},EMPTY,JSON.parse(localStorage.getItem(KEY)))}catch(x){S=Object.assign({},EMPTY)}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(x){}};
+const today=()=>new Date().toISOString().slice(0,10);
+const uid=()=>Math.random().toString(36).slice(2,8);
+const e=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let DC='XAF';
+const fmt=(n,c)=>{c=c||DC;try{return new Intl.NumberFormat('fr-FR',{style:'currency',currency:c}).format(+n||0)}catch(x){return (+n||0).toLocaleString('fr-FR')+' '+c}};
+const CUR=(()=>{let a;try{a=Intl.supportedValuesOf('currency')}catch(x){a=['XAF','XOF','CDF','USD','EUR','GBP','CAD','CHF','CNY','JPY','MAD','NGN','ZAR','GHS','KES','AED','INR','BRL','RUB']}const top=['XAF','XOF','CDF','USD','EUR','GBP'];return top.concat(a.filter(c=>!top.includes(c)))})();
+const CN=(()=>{try{return new Intl.DisplayNames(['fr'],{type:'currency'})}catch(x){return null}})();
+const CO=CUR.map(c=>{let n='';try{n=CN?CN.of(c):''}catch(x){}return [c,c+(n&&n!==c?' — '+n:'')]});
+const pc=p=>(p&&p.cur)||'XAF';
+const cv=x=>(+x.amt)*(+x.rate||1);
+const fx=x=>{const c=x.cur||DC;return c==DC?fmt(x.amt,c):fmt(x.amt,c)+' ≈ '+fmt(cv(x))};
+const curCard=()=>{const m={};S.projects.forEach(p=>{const c=pc(p);m[c]=m[c]||{b:0,s:0,i:0};m[c].b+=+p.budget;m[c].s+=spent(p.id);m[c].i+=income(p.id)});const r=Object.entries(m);return `<div class="card sc"><h2>Suivi par devise</h2>${r.map(([c,o])=>`<div class="row"><b>${c}</b><span>Budget ${fmt(o.b,c)} · Dépensé ${fmt(o.s,c)} · Restant ${fmt(o.b-o.s,c)} · Solde ${fmt(o.i-o.s,c)}</span></div>`).join('')||'<span class="mut">Aucune donnée : créez un projet avec sa devise.</span>'}</div>`};
+const origCard=pid=>{const m={};const add=(x,k)=>{const c=x.cur||DC;m[c]=m[c]||{d:0,r:0};m[c][k]+=+x.amt};S.expenses.filter(x=>x.pid==pid).forEach(x=>add(x,'d'));S.incomes.filter(x=>x.pid==pid).forEach(x=>add(x,'r'));const r=Object.entries(m);return r.length?`<div class="card"><h2>Mouvements par devise d’origine</h2>${r.map(([c,o])=>`<div class="row"><b>${c}</b><span>Dépenses ${fmt(o.d,c)} · Revenus ${fmt(o.r,c)}</span></div>`).join('')}</div>`:''};
+const v=id=>document.getElementById(id).value;
+const opt=(a,sel)=>a.map(x=>{x=Array.isArray(x)?x:[x,x];return `<option value="${e(x[0])}"${x[0]==sel?' selected':''}>${e(x[1])}</option>`}).join('');
+const I=(id,l,t='text',val='')=>`<label>${l}<input id="${id}" type="${t}" value="${e(val)}"></label>`;
+const Sel=(id,l,a,sel)=>`<label>${l}<select id="${id}">${opt(a,sel)}</select></label>`;
+const lv=p=>LV.find(l=>p<=l.m);
+const pill=p=>{const l=lv(p);return `<span class="pill" style="background:${l.c};color:${l.x}">${l.n} · ${p} %</span>`};
+const bar=p=>`<div class="bar"><i style="width:${p}%;background:${lv(p).c}"></i></div>`;
+const uc=u=>u>=100?LV[0]:u>=80?LV[1]:u>=50?LV[2]:LV[3];
+const ubar=u=>`<div class="bar"><i style="width:${Math.min(u,100)}%;background:${uc(u).c}"></i></div>`;
+const sc=p=>+p.qty<=+p.min?LV[0]:+p.qty<=+p.min*1.5?LV[1]:+p.qty<=+p.min*2?LV[2]:LV[3];
+const legend=()=>LV.map(l=>`<span class="pill" style="background:${l.c};color:${l.x}">${l.n} — ${l.d}</span>`).join('');
+const pOpts=()=>S.projects.map(p=>[p.id,p.name]);
+const pname=id=>(S.projects.find(p=>p.id==id)||{}).name||'—';
+const st=p=>p.status!=='Terminé'&&p.end&&p.end<today()?'En retard':p.status;
+const sum=(a,pid)=>a.filter(x=>!pid||x.pid==pid).reduce((t,x)=>t+cv(x),0);
+const spent=pid=>sum(S.expenses,pid),income=pid=>sum(S.incomes,pid);
+const late=()=>S.tasks.filter(t=>t.pct<100&&t.due&&t.due<today());
+const low=()=>S.products.filter(p=>+p.qty<=+p.min);
+const days=(a,b)=>Math.round((new Date(b)-new Date(a))/864e5);
+const tst=t=>t.pct>=100?'Terminé':t.pct>0?'En cours':'À faire';
+const del=(c,id)=>{if(confirm('Supprimer cet élément ?')){S[c]=S[c].filter(x=>x.id!=id);go()}};
+const go=()=>{save();render()};
+function render(){
+ document.getElementById('role').innerHTML=opt(ROLES,S.role);
+ const al=ACC[S.role];if(!al.includes(S.tab))S.tab=al[0];
+ document.getElementById('nav').innerHTML=al.map(k=>`<button class="${k==S.tab?'on':''}" onclick="S.tab='${k}';S.detail='';go()">${TABS[k]}</button>`).join('');
+ document.getElementById('app').innerHTML=(S.tab=='proj'&&S.detail)?detail():VIEWS[S.tab]();
+}
+const VIEWS={
+dash(){
+ const P=S.projects,tot=P.reduce((a,p)=>a+ +p.budget,0),sp=spent(),inc=income(),L=late(),Lo=low();
+ const run=P.filter(p=>st(p)==='En cours').length,money=S.role!=='Employé';
+ const max=Math.max(1,...P.map(p=>Math.max(+p.budget,spent(p.id))));
+ return `<div class="grid">
+ <div class="card kpi"><b>${P.length}</b><span>Projets au total</span></div>
+ <div class="card kpi"><b>${run}</b><span>Projets en cours</span></div>
+ 
+ <div class="card kpi"><b style="color:${L.length?'#d93636':'inherit'}">${L.length}</b><span>Tâches en retard</span></div>
+ <div class="card kpi"><b style="color:${Lo.length?'#f08a1c':'inherit'}">${Lo.length}</b><span>Alertes stock bas</span></div></div>
+ <div class="card"><h2>Niveaux d’avancement</h2>${legend()}
+  <div style="margin-top:8px">${LV.map((l,i)=>{const n=P.filter(p=>lv(+p.pct)==l).length;return `<span class="pill" style="background:${l.c};color:${l.x}">${l.n} : ${n} projet${n>1?'s':''}</span>`}).join('')}</div></div>
+ ${money?curCard():''}
+ ${Lo.map(p=>`<div class="alert">Stock bas : il ne reste que ${e(p.qty)} × ${e(p.name)}</div>`).join('')}
+ ${L.map(t=>`<div class="alert bad">Tâche en retard : « ${e(t.title)} » (${e(t.who)}) — ${e(pname(t.pid))}</div>`).join('')}
+ <div class="card"><h2>Avancement des projets</h2>${P.map(p=>`<div class="row f"><b>${e(p.name)}</b><span>${pill(+p.pct)} <span class="tag">${st(p)}</span></span></div>${bar(+p.pct)}`).join('')||'<span class="mut">Aucun projet pour le moment. Créez-en un dans l’onglet Projets.</span>'}</div>
+ ${money&&P.length?`<div class="card"><h2>Budget prévu vs dépensé</h2>${P.map(p=>{const u=p.budget?spent(p.id)/p.budget*100:0;return `<div><b>${e(p.name)}</b> <small>${Math.round(u)} % dépensé</small><div class="bar"><i style="width:100%;background:#6b7587"></i></div>${ubar(u)}<small>Prévu ${fmt(p.budget,pc(p))} · Dépensé ${fmt(spent(p.id),pc(p))}</small></div>`}).join('')}<small>Dépenses : vert &lt; 50 % · jaune 50–79 % · orange 80–99 % · rouge ≥ 100 % du budget.</small></div>`:''}
+ <button class="btn s" onclick="if(confirm('Effacer toutes les données ?')){localStorage.removeItem(KEY);location.reload()}">Réinitialiser les données</button>`},
+proj(){
+ return `<div class="card"><h2>Nouveau projet</h2><div class="frm">${I('pn','Nom')}${I('pd','Description')}${I('ps','Début','date',today())}${I('pe','Fin','date')}${I('pl','Chef de projet')}${I('pt','Équipe assignée')}${Sel('pc','Devise du budget',CO,'XAF')}${I('pb','Budget total','number')}<button class="btn" onclick="addP()">Créer</button></div></div>
+ <div class="card">${legend()}</div>`+
+ S.projects.map(p=>`<div class="card"><div class="row f"><b>${e(p.name)}</b><span>${pill(+p.pct)} <span class="tag">${st(p)}</span></span></div>${bar(+p.pct)}<small>${e(p.start)} → ${e(p.end)} · Chef : ${e(p.lead)} · Budget : ${fmt(p.budget,pc(p))}</small>
+ <div class="frm" style="margin-top:8px"><label>Avancement : ${p.pct} %<input type="range" min="0" max="100" step="5" value="${p.pct}" onchange="setP('${p.id}','pct',this.value)"></label>${Sel('st'+p.id,'Statut',['En attente','En cours','Terminé'],p.status)}<button class="btn g" onclick="setP('${p.id}','status',v('st${p.id}'))">Mettre à jour le statut</button><button class="btn" onclick="S.detail='${p.id}';go()">Voir les détails</button><button class="btn s" onclick="delP('${p.id}')">Supprimer</button></div></div>`).join('')||'<div class="card mut">Aucun projet.</div>'},
+task(){
+ return `<div class="card"><h2>Nouvelle tâche</h2><div class="frm">${I('tt','Titre')}${Sel('tp','Projet',pOpts())}${I('tw','Assignée à')}${I('td','Date limite','date')}${Sel('tr','Priorité',['Urgent','Normal','Faible'],'Normal')}<button class="btn" onclick="addT()">Ajouter</button></div>${S.projects.length?'':'<small>Créez d’abord un projet.</small>'}</div>
+ <div class="card">${legend()}</div>`+
+ S.tasks.map(t=>{const l=t.pct<100&&t.due&&t.due<today();return `<div class="card"><div class="row f"><b>${e(t.title)}</b><span>${pill(+t.pct)} <span class="tag">${tst(t)}</span> <span class="tag">${t.prio}</span> ${l?'<span class="pill" style="background:#d93636;color:#fff">En retard</span>':''}</span></div>${bar(+t.pct)}<small>${e(pname(t.pid))} · ${e(t.who)} · échéance ${e(t.due)}</small>
+ ${t.com.map(c=>`<div><small>💬 ${e(c)}</small></div>`).join('')}
+ <div class="frm" style="margin-top:8px"><label>Avancement : ${t.pct} %<input type="range" min="0" max="100" step="10" value="${t.pct}" onchange="setT('${t.id}',this.value)"></label><button class="btn g" onclick="comT('${t.id}')">Commenter</button><button class="btn s" onclick="del('tasks','${t.id}')">Supprimer</button></div></div>`}).join('')||'<div class="card mut">Aucune tâche.</div>'},
+budget(){
+ if(!S.projects.find(p=>p.id==S.pid))S.pid=(S.projects[0]||{}).id;
+ const p=S.projects.find(x=>x.id==S.pid);
+ if(!p)return '<div class="card">Créez d’abord un projet pour gérer son budget.</div>';
+ DC=pc(p);const sp=spent(p.id),rest=p.budget-sp,u=p.budget?sp/p.budget*100:0;
+ return `<div class="card"><label>Projet<select onchange="S.pid=this.value;go()">${opt(pOpts(),S.pid)}</select></label></div>
+ <div class="grid"><div class="card kpi"><b>${fmt(p.budget)}</b><span>Budget total</span></div><div class="card kpi"><b>${fmt(sp)}</b><span>Dépenses</span></div><div class="card kpi"><b style="color:${rest<0?'#d93636':'inherit'}">${fmt(rest)}</b><span>Budget restant</span></div><div class="card kpi"><b>${fmt(income(p.id))}</b><span>Financements reçus</span></div><div class="card kpi"><b>${fmt(income(p.id)-sp)}</b><span>Solde</span></div></div>
+ <div class="card"><b>${Math.round(u)} % du budget dépensé</b> <span class="pill" style="background:${uc(u).c};color:${uc(u).x}">${uc(u).n}</span>${ubar(u)}</div>
+ ${u>=80?`<div class="alert bad">Attention : ${Math.round(u)} % du budget déjà dépensé</div>`:''}
+ <div class="card"><h2>Ajouter une dépense</h2><div class="frm">${I('ed','Date','date',today())}${I('em','Motif')}${I('ea','Montant','number')}${Sel('ec','Devise',CO,DC)}${I('er','Taux vers '+DC+' (1 si identique)','number',1)}${I('ew','Dépensé par')}<button class="btn" onclick="addE()">Ajouter</button></div></div>
+ <div class="card"><h2>Ajouter un revenu / financement</h2><div class="frm">${I('id','Date','date',today())}${I('is','Source')}${I('ia','Montant','number')}${Sel('ic','Devise',CO,DC)}${I('ir','Taux vers '+DC+' (1 si identique)','number',1)}<button class="btn" onclick="addI()">Ajouter</button></div></div>
+ <div class="card sc"><h2>Dépenses</h2>${S.expenses.filter(x=>x.pid==p.id).map(x=>`<div class="row"><span>${e(x.date)} · ${e(x.motif)} · ${e(x.who)}</span><span>${fx(x)} <button class="btn s" onclick="del('expenses','${x.id}')">✕</button></span></div>`).join('')||'<span class="mut">Aucune dépense.</span>'}</div>
+ <div class="card sc"><h2>Revenus</h2>${S.incomes.filter(x=>x.pid==p.id).map(x=>`<div class="row"><span>${e(x.date)} · ${e(x.src)}</span><span>${fx(x)} <button class="btn s" onclick="del('incomes','${x.id}')">✕</button></span></div>`).join('')||'<span class="mut">Aucun revenu.</span>'}</div>
+ ${origCard(p.id)}<button class="btn" onclick="report()">Rapport PDF (imprimer / enregistrer en PDF)</button>`},
+stock(){
+ const vm={};S.products.forEach(p=>{const c=p.cur||'XAF';vm[c]=(vm[c]||0)+p.qty*p.price});const val=Object.entries(vm).map(([c,n])=>fmt(n,c)).join(' + ')||fmt(0,'XAF');
+ return `<div class="card"><h2>Ajouter un produit</h2><div class="frm">${I('sn','Nom')}${I('sq','Quantité','number')}${I('sp','Prix unitaire','number')}${I('sc','Catégorie')}${I('sm','Seuil d’alerte','number',5)}${Sel('scu','Devise du prix',CO,'XAF')}<button class="btn" onclick="addS()">Ajouter</button></div></div>
+ <div class="card"><h2>Entrée / sortie de stock</h2><div class="frm">${Sel('mpd','Produit',S.products.map(p=>[p.id,p.name]))}${Sel('mt','Type',['Entrée','Sortie'])}${I('mq','Quantité','number')}${Sel('mj','Projet lié',[['','—'],...pOpts()])}${I('mw','Par qui')}<button class="btn" onclick="addM()">Valider</button></div></div>
+ <div class="card"><h2>Produits <small>· valeur du stock : ${val}</small></h2><small>Rouge : sous le seuil · orange : proche · jaune : à surveiller · vert : suffisant</small>${S.products.map(p=>{const c=sc(p);return `<div class="row"><span><b>${e(p.name)}</b> · ${e(p.cat)} · ${fmt(p.price,p.cur||'XAF')} · seuil ${e(p.min)}</span><span><span class="pill" style="background:${c.c};color:${c.x}">${e(p.qty)} en stock</span> <button class="btn s" onclick="del('products','${p.id}')">✕</button></span></div>`}).join('')||'<div class="mut">Aucun produit.</div>'}</div>
+ <div class="card"><h2>Historique</h2>${S.moves.slice().reverse().map(m=>`<div class="row"><span>${e(m.date)} · ${e(m.who)} · ${e(m.type)} de ${e(m.qty)} × ${e(m.name)}</span><span>${m.pid?e(pname(m.pid)):''}</span></div>`).join('')||'<span class="mut">Aucun mouvement.</span>'}</div>`},
+team(){
+ return `<div class="card"><h2>Ajouter un membre</h2><div class="frm">${I('mn','Nom')}${Sel('mr','Rôle',ROLES,'Employé')}${I('mtl','Téléphone','tel')}<button class="btn" onclick="addM2()">Ajouter</button></div></div>
+ <div class="card">${S.team.map(m=>`<div class="row"><span><b>${e(m.name)}</b> · ${e(m.tel)}</span><span><span class="tag">${e(m.role)}</span> <button class="btn s" onclick="del('team','${m.id}')">✕</button></span></div>`).join('')||'<span class="mut">Aucun membre.</span>'}</div>
+ <div class="card"><small>Visibilité — Admin : tout · Chef de projet : projets, tâches, budget, stock · Employé : tâches et stock · Comptable : budget. Changez de rôle en haut pour tester.</small></div>`}
+};
+function detail(){
+ const p=S.projects.find(x=>x.id==S.detail);if(!p){S.detail='';return VIEWS.proj()}
+ DC=pc(p);const T=S.tasks.filter(t=>t.pid==p.id),done=T.filter(t=>t.pct>=100).length,sp=spent(p.id),u=p.budget?sp/p.budget*100:0;
+ const tot=p.start&&p.end?Math.max(1,days(p.start,p.end)):0,el=tot?Math.min(Math.max(days(p.start,today()),0),tot):0,tp=tot?Math.round(el/tot*100):0;
+ const ok=+p.pct>=tp-10,l=lv(+p.pct);
+ return `<button class="btn g" onclick="S.detail='';go()">← Retour aux projets</button>
+ <div class="card" style="margin-top:10px"><h2>${e(p.name)}</h2><div>${e(p.desc)}</div><small>Chef : ${e(p.lead)} · Équipe : ${e(p.team)} · ${e(p.start)} → ${e(p.end)}</small>
+ <div style="margin-top:8px">${pill(+p.pct)} <span class="tag">${st(p)}</span></div>${bar(+p.pct)}<div><b style="color:${l.c}">${l.n}</b> — ${l.d}</div></div>
+ <div class="grid"><div class="card kpi"><b>${tot?`${el} / ${tot} j`:'—'}</b><span>Temps écoulé (${tp} %)</span></div>
+ <div class="card kpi"><b style="color:${ok?'#1e9e5a':'#d93636'}">${tot?(ok?'Dans les temps':'Retard sur le planning'):'—'}</b><span>Avancement ${p.pct} % vs temps ${tp} %</span></div>
+ <div class="card kpi"><b>${done} / ${T.length}</b><span>Tâches terminées</span></div>
+ <div class="card kpi"><b>${fmt(p.budget)}</b><span>Budget total</span></div>
+ <div class="card kpi"><b>${fmt(sp)}</b><span>Dépensé (${Math.round(u)} %)</span></div>
+ <div class="card kpi"><b>${fmt(p.budget-sp)}</b><span>Budget restant</span></div></div>
+ <div class="card"><h2>Consommation du budget</h2>${ubar(u)}<span class="pill" style="background:${uc(u).c};color:${uc(u).x}">${uc(u).n} · ${Math.round(u)} %</span></div>
+ <div class="card"><h2>Tâches</h2>${T.map(t=>`<div class="row"><span>${e(t.title)} · ${e(t.who)} · ${e(t.due)}</span>${pill(+t.pct)}</div>`).join('')||'<span class="mut">Aucune tâche.</span>'}</div>
+ <div class="card"><h2>Dépenses</h2>${S.expenses.filter(x=>x.pid==p.id).map(x=>`<div class="row"><span>${e(x.date)} · ${e(x.motif)}</span><span>${fx(x)}</span></div>`).join('')||'<span class="mut">Aucune dépense.</span>'}</div>
+ <div class="card"><h2>Stock utilisé</h2>${S.moves.filter(m=>m.pid==p.id&&m.type=='Sortie').map(m=>`<div class="row"><span>${e(m.date)} · ${e(m.who)}</span><span>${e(m.qty)} × ${e(m.name)}</span></div>`).join('')||'<span class="mut">Aucune sortie de stock.</span>'}</div>`}
+function addP(){if(!v('pn'))return;S.projects.push({id:uid(),name:v('pn'),desc:v('pd'),start:v('ps'),end:v('pe'),lead:v('pl'),team:v('pt'),status:'En attente',pct:0,budget:+v('pb')||0,cur:v('pc')});go()}
+function setP(id,k,val){const p=S.projects.find(x=>x.id==id);p[k]=k=='pct'?+val:val;if(k=='pct'){if(p.pct>=100)p.status='Terminé';else if(p.pct>0&&p.status=='En attente')p.status='En cours'}go()}
+function delP(id){if(!confirm('Supprimer ce projet et tout ce qui lui est lié (tâches, dépenses, revenus) ?'))return;['projects'].forEach(c=>S[c]=S[c].filter(x=>x.id!=id));['tasks','expenses','incomes'].forEach(c=>S[c]=S[c].filter(x=>x.pid!=id));S.moves.forEach(m=>{if(m.pid==id)m.pid=''});go()}
+function addT(){if(!v('tt')||!S.projects.length)return;S.tasks.push({id:uid(),title:v('tt'),pid:v('tp'),who:v('tw'),due:v('td'),prio:v('tr'),pct:0,com:[]});go()}
+function setT(id,val){S.tasks.find(x=>x.id==id).pct=+val;go()}
+function comT(id){const c=prompt('Votre commentaire :');if(c){S.tasks.find(x=>x.id==id).com.push(c);go()}}
+function addE(){if(!v('ea'))return;const pcur=pc(S.projects.find(p=>p.id==S.pid)),c=v('ec');S.expenses.push({id:uid(),pid:S.pid,date:v('ed'),motif:v('em'),amt:+v('ea'),cur:c,rate:c==pcur?1:(+v('er')||1),who:v('ew')});go()}
+function addI(){if(!v('ia'))return;const pcur=pc(S.projects.find(p=>p.id==S.pid)),c=v('ic');S.incomes.push({id:uid(),pid:S.pid,date:v('id'),src:v('is'),amt:+v('ia'),cur:c,rate:c==pcur?1:(+v('ir')||1)});go()}
+function addS(){if(!v('sn'))return;S.products.push({id:uid(),name:v('sn'),qty:+v('sq')||0,price:+v('sp')||0,cat:v('sc'),min:+v('sm')||0,cur:v('scu')});go()}
+function addM(){const p=S.products.find(x=>x.id==v('mpd'));const q=+v('mq');if(!p||!q)return;
+ if(v('mt')=='Sortie'){if(q>p.qty){alert('Stock insuffisant.');return}p.qty-=q}else p.qty+=q;
+ S.moves.push({date:today(),who:v('mw'),type:v('mt'),qty:q,name:p.name,pid:v('mj')});go()}
+function addM2(){if(!v('mn'))return;S.team.push({id:uid(),name:v('mn'),role:v('mr'),tel:v('mtl')});go()}
+function report(){const p=S.projects.find(x=>x.id==S.pid);DC=pc(p);
+ document.getElementById('rep').innerHTML=`<h1>Rapport budgétaire — ${e(p.name)}</h1><p>Date : ${today()} · Avancement : ${p.pct} %</p><p>Budget total : ${fmt(p.budget)}<br>Dépenses : ${fmt(spent(p.id))}<br>Financements reçus : ${fmt(income(p.id))}<br>Budget restant : ${fmt(p.budget-spent(p.id))}<br>Solde : ${fmt(income(p.id)-spent(p.id))}</p><h2>Dépenses</h2><table border="1" cellpadding="4" style="border-collapse:collapse;width:100%">${S.expenses.filter(x=>x.pid==p.id).map(x=>`<tr><td>${e(x.date)}</td><td>${e(x.motif)}</td><td>${e(x.who)}</td><td>${fx(x)}</td></tr>`).join('')}</table>`;
+ document.body.classList.add('printing');window.print();document.body.classList.remove('printing')}
+render();
+</script></body></html>
